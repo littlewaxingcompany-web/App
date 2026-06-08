@@ -1,76 +1,115 @@
 /**
- * Test script for Ovatu → Zapier Bridge
+ * Test script for SalonStream Bridge — Email Parser Edition
  * 
- * Tests the Ovatu API connection without starting the full polling loop.
+ * Tests the email parser with sample booking emails to verify
+ * field extraction works correctly.
  * 
  * Usage:
  *   node test.js
- * 
- * Environment variables (from .env or environment):
- *   OVATU_API_TOKEN - Required: Your Ovatu API token
  */
 
 require('dotenv').config();
-const OvatuClient = require('./ovatu-client');
+const EmailParser = require('./email-parser');
 
-const API_TOKEN = process.env.OVATU_API_TOKEN;
-const BASE_URL = process.env.OVATU_BASE_URL || 'https://api.ovatu.com/v2';
+// Sample booking confirmation email based on the expected template
+const SAMPLE_BOOKING_EMAIL = `New Booking Confirmation
+
+Location: Downtown Salon & Spa
+Date: June 15, 2026
+Service: Brazilian Wax - Full
+Time: 2:30 PM
+
+Client Info:
+Name: Jane Smith
+Phone: +1 (555) 123-4567
+
+This is the number we have on file for appointment reminders.
+
+Thank you for choosing us!`;
+
+// Sample with slightly different formatting
+const SAMPLE_BOOKING_EMAIL_2 = `Booking Reminder
+
+Location: Uptown Studio
+Date: 2026-06-20
+Service: Eyebrow Threading
+Time: 10:00 AM
+Staff: Sarah
+
+Contact:
+(555) 987-6543 is the number we have on file.
+
+See you soon!`;
+
+// Non-booking email (should be filtered out)
+const SAMPLE_NON_BOOKING = `Hey team, just a reminder about the staff meeting tomorrow at 9am. Bring your ideas!`;
 
 async function run() {
-  console.log('╔═══════════════════════════════════════════╗');
-  console.log('║     Ovatu API Connection Test             ║');
-  console.log('╚═══════════════════════════════════════════╝\n');
+  console.log('╔══════════════════════════════════════════════════════╗');
+  console.log('║     SalonStream Email Parser Test                    ║');
+  console.log('╚══════════════════════════════════════════════════════╝\n');
 
-  if (!API_TOKEN || API_TOKEN === 'your_api_token_here') {
-    console.error('❌ Error: OVATU_API_TOKEN is not set.');
-    console.error('   Copy .env.example to .env and add your token.');
-    console.error('   Get your API token from Ovatu Manager → Settings → API.\n');
-    process.exit(1);
-  }
+  const parser = new EmailParser();
 
-  console.log(`Testing connection to ${BASE_URL}...\n`);
+  // Test 1: Sample booking email
+  console.log('Test 1: Parse booking confirmation email');
+  const result1 = parser.parse({
+    subject: 'New Booking Confirmation - Appointment #12345',
+    text: SAMPLE_BOOKING_EMAIL,
+    from: { text: 'bookings@salon.com' },
+    date: new Date(),
+  });
+  console.log('  Location:', result1.location);
+  console.log('  Date:', result1.date_appointment);
+  console.log('  Service:', result1.service);
+  console.log('  Time:', result1.time);
+  console.log('  Phone:', result1.phone);
+  
+  const pass1 = result1.location === 'Downtown Salon & Spa'
+    && result1.service === 'Brazilian Wax - Full'
+    && result1.phone && result1.phone.includes('555');
+  
+  console.log(`  Result: ${pass1 ? '✓ PASS' : '✗ FAIL'}\n`);
 
-  const client = new OvatuClient(API_TOKEN, BASE_URL);
+  // Test 2: Alternate format
+  console.log('Test 2: Parse alternate booking format');
+  const result2 = parser.parse({
+    subject: 'Booking Reminder',
+    text: SAMPLE_BOOKING_EMAIL_2,
+    from: { text: 'noreply@studio.com' },
+    date: new Date(),
+  });
+  console.log('  Location:', result2.location);
+  console.log('  Date:', result2.date_appointment);
+  console.log('  Service:', result2.service);
+  console.log('  Time:', result2.time);
+  console.log('  Phone:', result2.phone);
   
-  // Test 1: Basic connection
-  console.log('Test 1: Connection test');
-  const connected = await client.testConnection();
+  const pass2 = result2.location === 'Uptown Studio'
+    && result2.service === 'Eyebrow Threading'
+    && result2.phone && result2.phone.includes('987');
   
-  if (!connected) {
-    console.error('\n❌ Connection test FAILED.');
-    console.error('   Possible issues:');
-    console.error('   - Invalid API token');
-    console.error('   - Wrong API base URL');
-    console.error('   - Network connectivity issue');
-    process.exit(1);
-  }
-  
-  console.log('✓ Connection test PASSED.\n');
-  
-  // Test 2: Fetch recent appointments (last 24 hours)
-  console.log('Test 2: Fetch appointments from last 24 hours');
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  
-  try {
-    const data = await client.getAppointmentsUpdatedSince(since);
-    const appointments = data.data || data.appointments || data;
-    const count = Array.isArray(appointments) ? appointments.length : 1;
-    console.log(`✓ Found ${count} appointment(s) updated in the last 24 hours.\n`);
-    
-    if (count > 0) {
-      const items = Array.isArray(appointments) ? appointments : [appointments];
-      console.log('First appointment preview:');
-      console.log(JSON.stringify(items[0], null, 2).substring(0, 500));
-      console.log('...\n');
-    }
-  } catch (error) {
-    console.error('⚠ Fetch test returned an error (may be expected if no valid token):', error.message);
-    console.error('  This is OK if you haven\'t configured a real API token yet.\n');
-  }
-  
-  console.log('╔═══════════════════════════════════════════╗');
-  console.log('║  Test complete.                           ║');
-  console.log('╚═══════════════════════════════════════════╝');
+  console.log(`  Result: ${pass2 ? '✓ PASS' : '✗ FAIL'}\n`);
+
+  // Test 3: Non-booking email filter
+  console.log('Test 3: Non-booking email filtering');
+  const result3 = parser.parse({
+    subject: 'Staff Meeting Reminder',
+    text: SAMPLE_NON_BOOKING,
+    from: { text: 'manager@salon.com' },
+    date: new Date(),
+  });
+  const isBooking = parser.isBookingEmail({
+    subject: 'Staff Meeting Reminder',
+    text: SAMPLE_NON_BOOKING,
+  });
+  console.log(`  Is booking email: ${isBooking}`);
+  console.log(`  Result: ${!isBooking ? '✓ PASS (correctly filtered)' : '✗ FAIL'}\n`);
+
+  // Summary
+  console.log('╔══════════════════════════════════════════════════════╗');
+  console.log(`║  Summary: ${pass1 && pass2 && !isBooking ? 'All tests PASSED' : 'Some tests FAILED'}          ║`);
+  console.log('╚══════════════════════════════════════════════════════╝');
 }
 
 run().catch(error => {
