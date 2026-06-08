@@ -1,24 +1,26 @@
 /**
- * SalonStream Bridge — Email Parser Edition
+ * SalonStream Bridge
  * 
- * Listens to an IMAP mailbox for booking confirmation/reminder emails,
- * parses them into structured appointment data, and forwards to
- * Zapier webhooks for WhatsApp message automation.
+ * Two modes:
+ *   1. IMAP Listener — Connects to an IMAP mailbox for real-time email detection
+ *   2. Inbox Agent — CLI tool for processing emails from the agent's tools
  * 
- * Usage:
- *   1. Copy .env.example to .env and fill in credentials
- *   2. npm install
- *   3. npm start
+ * Mode 1 (IMAP): Run with `npm start` after configuring IMAP_* env vars.
+ * Mode 2 (Agent): Use `node inbox-agent.js` with the --subject, --from, --body flags.
+ * 
+ * Default: Runs the IMAP listener if IMAP_HOST is configured, otherwise
+ * prints usage instructions for the agent-based approach.
  */
 
 require('dotenv').config();
-const WebhookSender = require('./webhook-sender');
-const ImapListener = require('./imap-listener');
-
-// ─── Configuration ────────────────────────────────────────────────────────────
 
 const config = {
+  mode: process.env.BRIDGE_MODE || (process.env.IMAP_HOST ? 'imap' : 'agent'),
   webhookUrl: process.env.ZAPIER_WEBHOOK_URL,
+  filter: {
+    sender: process.env.EMAIL_FILTER_SENDER || 'reservations@ovatu.com',
+    subjectPattern: process.env.EMAIL_FILTER_SUBJECT || 'thankyou for your booking at the',
+  },
   imap: {
     host: process.env.IMAP_HOST,
     port: parseInt(process.env.IMAP_PORT, 10) || 993,
@@ -30,62 +32,74 @@ const config = {
   },
 };
 
-// Validate required config
-const required = ['webhookUrl'];
-const imapRequired = ['host', 'user', 'password'];
-
-for (const key of required) {
-  if (!config[key]) {
-    console.error(`[Bridge] ERROR: Missing required environment variable: ZAPIER_WEBHOOK_URL`);
-    console.error(`[Bridge] Please set ZAPIER_WEBHOOK_URL in .env`);
-    process.exit(1);
-  }
-}
-
-for (const key of imapRequired) {
-  if (!config.imap[key]) {
-    console.error(`[Bridge] ERROR: Missing required environment variable: IMAP_${key.toUpperCase()}`);
-    console.error(`[Bridge] Please set IMAP_${key.toUpperCase()} in .env`);
-    process.exit(1);
-  }
-}
-
-// ─── Initialize ───────────────────────────────────────────────────────────────
-
-const webhook = new WebhookSender(config.webhookUrl);
-const imapListener = new ImapListener(config.imap, webhook);
-
-// ─── Startup ──────────────────────────────────────────────────────────────────
-
 async function start() {
   console.log(`╔══════════════════════════════════════════════════════╗`);
   console.log(`║         SalonStream Bridge                          ║`);
-  console.log(`║         Email Parser Edition                        ║`);
+  console.log(`║         Ovatu Email Parser → Zapier                 ║`);
   console.log(`╚══════════════════════════════════════════════════════╝`);
   console.log(`\nConfiguration:`);
-  console.log(`  IMAP Server: ${config.imap.host}:${config.imap.port}`);
-  console.log(`  Mailbox: ${config.imap.mailbox}`);
-  console.log(`  User: ${config.imap.user}`);
-  console.log(`  Zapier Webhook: ${config.webhookUrl.substring(0, 50)}...`);
-  
-  // Test IMAP connection briefly
-  console.log(`\n[Bridge] Starting IMAP listener...`);
-  console.log(`[Bridge] Press Ctrl+C to stop.\n`);
-  
-  await imapListener.start();
+  console.log(`  Filter sender: ${config.filter.sender}`);
+  console.log(`  Filter subject: ${config.filter.subjectPattern}`);
+
+  if (config.mode === 'imap') {
+    // ─── IMAP Mode ──────────────────────────────────────────────
+    const WebhookSender = require('./webhook-sender');
+    const ImapListener = require('./imap-listener');
+    
+    if (!config.imap.host || !config.imap.user || !config.imap.password) {
+      console.error(`[Bridge] ERROR: IMAP mode requires IMAP_HOST, IMAP_USER, IMAP_PASSWORD`);
+      process.exit(1);
+    }
+    
+    const webhook = new WebhookSender(config.webhookUrl);
+    const imapListener = new ImapListener(config.imap, webhook);
+    
+    console.log(`  IMAP Server: ${config.imap.host}:${config.imap.port}`);
+    console.log(`  User: ${config.imap.user}`);
+    
+    if (config.webhookUrl) {
+      console.log(`  Zapier Webhook: ${config.webhookUrl.substring(0, 50)}...`);
+    } else {
+      console.log(`  Zapier Webhook: NOT CONFIGURED (set ZAPIER_WEBHOOK_URL in .env)`);
+    }
+    
+    console.log(`\n[Bridge] Starting IMAP listener...\n`);
+    await imapListener.start();
+    
+  } else {
+    // ─── Agent Mode ──────────────────────────────────────────────
+    console.log(`\n[Bridge] Running in AGENT mode.`);
+    console.log(`\nThe bridge is configured for agent-based polling.`);
+    console.log(`\nTo process emails manually:`);
+    console.log(`  1. Check inbox with the listMessages tool`);
+    console.log(`  2. Read new emails with readMessage tool`);
+    console.log(`  3. Process via inbox-agent.js:`);
+    console.log(`     node inbox-agent.js \\`);
+    console.log(`       --subject \"<email subject>\" \\`);
+    console.log(`       --from \"<sender email>\" \\`);
+    console.log(`       --body \"<email body text>\"`);
+    console.log(`       ${config.webhookUrl ? '--forward' : '--dry-run'}`);
+    console.log(``);
+    
+    if (config.webhookUrl) {
+      console.log(`  Zapier Webhook: CONFIGURED ✓`);
+    } else {
+      console.log(`  Zapier Webhook: NOT CONFIGURED — set ZAPIER_WEBHOOK_URL in .env`);
+    }
+    
+    console.log(`\n[Bridge] Agent mode ready. Waiting for manual invocation.`);
+  }
 }
 
 // ─── Graceful Shutdown ────────────────────────────────────────────────────────
 
 process.on('SIGINT', async () => {
-  console.log(`\n[Bridge] Shutting down gracefully...`);
-  await imapListener.stop();
+  console.log(`\n[Bridge] Shutting down...`);
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
-  console.log(`\n[Bridge] Shutting down on SIGTERM...`);
-  await imapListener.stop();
+  console.log(`\n[Bridge] Shutting down...`);
   process.exit(0);
 });
 

@@ -1,15 +1,19 @@
 /**
- * Email Parser for Salon Booking Emails
+ * Email Parser for Ovatu Booking Emails
  * 
- * Parses incoming booking confirmation/reminder emails from the salon's
- * scheduling system and extracts structured appointment data.
+ * Parses incoming booking confirmation/reminder emails forwarded from
+ * reservations@ovatu.com and extracts structured appointment data.
  * 
- * Expected email format (key fields):
+ * Expected email format:
  *   Location: <value>
  *   Date: <value>
  *   Service: <value>
  *   Time: <value>
- *   Phone: <value> (line before "is the number we have on file")
+ *   <phone> is the number we have on file for you.
+ * 
+ * Filter criteria:
+ *   - Sender: reservations@ovatu.com
+ *   - Subject: "Thankyou for your booking at the..."
  */
 
 const { simpleParser } = require('mailparser');
@@ -37,7 +41,7 @@ class EmailParser {
     const text = email.text || '';
     const html = email.html || '';
     const body = text || this._stripHtml(html);
-    const from = email.from ? email.from.text : '';
+    const from = email.from ? (email.from.text || email.from.address || '') : '';
 
     console.log(`[EmailParser] Parsing email: "${subject}" from: ${from}`);
 
@@ -77,7 +81,6 @@ class EmailParser {
   _extractField(body, fieldName) {
     if (!body) return null;
     
-    // Match "FieldName: value" — value can be multi-word, ends at newline
     const regex = new RegExp(`${fieldName}\\s*:\\s*(.+?)\\n`, 'i');
     const match = body.match(regex);
     
@@ -85,7 +88,6 @@ class EmailParser {
       return match[1].trim();
     }
     
-    // Fallback: try end of string if no newline after value
     const regexEnd = new RegExp(`${fieldName}\\s*:\\s*(.+?)$`, 'im');
     const matchEnd = body.match(regexEnd);
     
@@ -98,8 +100,7 @@ class EmailParser {
 
   /**
    * Extract phone number from the email body.
-   * Based on the template: the phone number appears on the line before
-   * "is the number we have on file".
+   * The phone number appears on the line with "is the number we have on file".
    * 
    * @param {string} body - Email body text
    * @returns {string|null} Extracted phone or null
@@ -108,7 +109,6 @@ class EmailParser {
     if (!body) return null;
 
     // Pattern: the line containing "is the number we have on file"
-    // The phone number is typically ON this line or the line just before
     const phoneContextRegex = /([^\n]+)\s*is the number we have on file/i;
     const match = body.match(phoneContextRegex);
     
@@ -119,12 +119,10 @@ class EmailParser {
       if (phoneMatch) {
         return phoneMatch[0].trim();
       }
-      // If no phone on this line, check the line before it
-      // by finding the line in the body and looking at preceding content
+      // If no phone on this line, check previous lines for a phone pattern
       const lines = body.split('\n');
       for (let i = 1; i < lines.length; i++) {
         if (lines[i].includes('is the number we have on file') && i > 0) {
-          // Search backwards from this line for any line with a phone pattern
           for (let j = i - 1; j >= Math.max(0, i - 5); j--) {
             const prevPhone = lines[j].match(/[\d\s\-\(\)\+\.]{7,}/);
             if (prevPhone) {
@@ -137,7 +135,7 @@ class EmailParser {
       return line;
     }
 
-    // Fallback: look for common phone patterns elsewhere
+    // Fallback: look for common phone patterns
     const phoneRegex = /(\+?\d[\d\s\-\(\)\.]{7,15}\d)/;
     const phoneMatch = body.match(phoneRegex);
     if (phoneMatch) {
@@ -149,9 +147,6 @@ class EmailParser {
 
   /**
    * Strip HTML tags to get plain text.
-   * 
-   * @param {string} html - HTML string
-   * @returns {string} Plain text
    */
   _stripHtml(html) {
     if (!html) return '';
@@ -167,20 +162,63 @@ class EmailParser {
   }
 
   /**
-   * Test if an email is a booking-related email based on subject and content.
+   * Check if an email is a booking email from Ovatu based on filter criteria.
    * 
-   * @param {Object} email - Parsed email object
-   * @returns {boolean} True if this looks like a booking email
+   * @param {Object} email - Email with subject, text/html body, from
+   * @param {Object} [filters] - Custom filter overrides
+   * @returns {boolean} True if this matches booking email criteria
    */
-  isBookingEmail(email) {
+  isBookingEmail(email, filters = {}) {
     const body = email.text || email.html || '';
     const subject = (email.subject || '').toLowerCase();
+    const from = (email.from || '').toLowerCase();
     
-    // Check for specific booking indicators (not generic words like "reminder")
-    const hasBookingKeywords = /\b(booking|appointment|confirmed|new booking|booking confirmation)\b/i.test(subject);
+    // Default filter: Ovatu forwarding
+    const expectedSender = (filters.sender || 'reservations@ovatu.com').toLowerCase();
+    const expectedSubjectPattern = filters.subjectPattern 
+      ? new RegExp(filters.subjectPattern, 'i') 
+      : /thankyou for your booking at the/i;
+    
+    const senderMatch = from.includes(expectedSender);
+    const subjectMatch = expectedSubjectPattern.test(subject);
+    
+    // When strict filters are provided, require both sender AND subject to match
+    if (filters.sender && filters.subjectPattern) {
+      return senderMatch && subjectMatch;
+    }
+    
+    // When only sender is provided, require sender match
+    if (filters.sender && !filters.subjectPattern) {
+      return senderMatch;
+    }
+    
+    // When no filters provided, use broad detection
     const hasKeyFields = /Location\s*:/i.test(body) || /Date\s*:/i.test(body);
+    return (senderMatch && subjectMatch) || hasKeyFields;
+  }
+
+  /**
+   * Process email text body through the full pipeline and return formatted payload.
+   * 
+   * @param {Object} emailData - { subject, from, text, html, date }
+   * @param {Object} [filters] - Optional filter overrides
+   * @returns {Object|null} Formatted appointment or null if filtered out
+   */
+  processEmail(emailData, filters = {}) {
+    if (!this.isBookingEmail(emailData, filters)) {
+      console.log(`[EmailParser] Email filtered out: "${emailData.subject}" from ${emailData.from}`);
+      return null;
+    }
     
-    return hasBookingKeywords || hasKeyFields;
+    const appointment = this.parse(emailData);
+    
+    // Check if essential fields were extracted
+    if (!appointment.location && !appointment.date_appointment && !appointment.phone) {
+      console.log(`[EmailParser] No appointment fields found, skipping.`);
+      return null;
+    }
+    
+    return appointment;
   }
 }
 
