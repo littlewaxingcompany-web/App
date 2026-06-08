@@ -1,0 +1,25 @@
+{
+  "name": "ovatu-zapier-bridge",
+  "version": "1.0.0",
+  "description": "Bridges Ovatu (salon management API) to Zapier via webhook triggers, enabling WhatsApp message automation",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js",
+    "test": "node test.js"
+  },
+  "keywords": [
+    "ovatu",
+    "zapier",
+    "webhook",
+    "salon",
+    "whatsapp",
+    "automation"
+  ],
+  "author": "SalonStream Team",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.17.0",
+    "dotenv": "^16.6.1"
+  }
+}
