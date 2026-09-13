@@ -30,12 +30,19 @@ const config = {
     mailbox: process.env.IMAP_MAILBOX || 'INBOX',
     pollIntervalMs: (parseInt(process.env.IMAP_POLL_INTERVAL, 10) || 30) * 1000,
   },
+  whatchimp: {
+    apiToken: process.env.WHATCHIMP_API_TOKEN,
+    phoneNumberId: process.env.WHATCHIMP_PHONE_NUMBER_ID,
+    templateName: process.env.WHATCHIMP_TEMPLATE_NAME || '',
+    languageCode: process.env.WHATCHIMP_LANGUAGE_CODE || 'en_US',
+    defaultCountryCode: process.env.WHATCHIMP_DEFAULT_COUNTRY_CODE || '44',
+  },
 };
 
 async function start() {
   console.log(`╔══════════════════════════════════════════════════════╗`);
   console.log(`║         SalonStream Bridge                          ║`);
-  console.log(`║         Ovatu Email Parser → Zapier                 ║`);
+  console.log(`║         Ovatu Email Parser → WhatsApp               ║`);
   console.log(`╚══════════════════════════════════════════════════════╝`);
   console.log(`\nConfiguration:`);
   console.log(`  Filter sender: ${config.filter.sender}`);
@@ -44,6 +51,7 @@ async function start() {
   if (config.mode === 'imap') {
     // ─── IMAP Mode ──────────────────────────────────────────────
     const WebhookSender = require('./webhook-sender');
+    const WhatChimpSender = require('./whatchimp-sender');
     const ImapListener = require('./imap-listener');
     
     if (!config.imap.host || !config.imap.user || !config.imap.password) {
@@ -51,17 +59,27 @@ async function start() {
       process.exit(1);
     }
     
-    const webhook = new WebhookSender(config.webhookUrl);
-    const imapListener = new ImapListener(config.imap, webhook);
+    // Choose the messaging backend. WhatChimp (direct WhatsApp) takes
+    // precedence when configured; otherwise fall back to the Zapier webhook.
+    let sender;
+    if (config.whatchimp.apiToken && config.whatchimp.phoneNumberId) {
+      sender = new WhatChimpSender(config.whatchimp);
+      console.log(`  Messaging: WhatChimp (direct WhatsApp)`);
+      console.log(`  Phone Number ID: ${config.whatchimp.phoneNumberId}`);
+      console.log(`  Template: ${config.whatchimp.templateName || '(none — free-form text, 24h window)'}`);
+    } else if (config.webhookUrl) {
+      sender = new WebhookSender(config.webhookUrl);
+      console.log(`  Messaging: Zapier Webhook`);
+      console.log(`  Zapier Webhook: ${config.webhookUrl.substring(0, 50)}...`);
+    } else {
+      console.warn(`  Messaging: NOT CONFIGURED — set WHATCHIMP_API_TOKEN/WHATCHIMP_PHONE_NUMBER_ID `);
+      console.warn(`  (or ZAPIER_WEBHOOK_URL) in .env. Parsed appointments will only be logged.`);
+    }
+    
+    const imapListener = new ImapListener(config.imap, sender, config.filter);
     
     console.log(`  IMAP Server: ${config.imap.host}:${config.imap.port}`);
     console.log(`  User: ${config.imap.user}`);
-    
-    if (config.webhookUrl) {
-      console.log(`  Zapier Webhook: ${config.webhookUrl.substring(0, 50)}...`);
-    } else {
-      console.log(`  Zapier Webhook: NOT CONFIGURED (set ZAPIER_WEBHOOK_URL in .env)`);
-    }
     
     console.log(`\n[Bridge] Starting IMAP listener...\n`);
     await imapListener.start();

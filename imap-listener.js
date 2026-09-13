@@ -21,8 +21,9 @@ class ImapListener {
    * @param {string} config.password - IMAP password
    * @param {string} config.mailbox - Mailbox to watch (default: 'INBOX')
    * @param {Object} [webhookSender] - Optional WebhookSender instance to forward parsed emails
+   * @param {Object} [filters] - Optional filters for email detection
    */
-  constructor(config, webhookSender = null) {
+  constructor(config, webhookSender = null, filters = {}) {
     this.config = {
       host: config.host,
       port: config.port || 993,
@@ -35,7 +36,9 @@ class ImapListener {
       logger: false, // reduce noise
     };
     this.webhookSender = webhookSender;
+    this.filters = filters;
     this.parser = new EmailParser();
+    this.startTime = new Date();
     this.client = null;
     this.running = false;
     this.pollIntervalMs = config.pollIntervalMs || 30000; // 30s poll fallback
@@ -85,18 +88,21 @@ class ImapListener {
   async _watchLoop() {
     while (this.running) {
       try {
-        // Check for new mail using IDLE (push) or polling
-        if (this.client.idle) {
+        // Check for new mail after any sleep/reconnect
+        await this._pollCheck();
+
+        // Wait for new mail using IDLE (push) or polling
+        if (this.client.enabledCapabilities.includes('IDLE')) {
           await this._idleWait();
         } else {
-          await this._pollCheck();
           await this._sleep(this.pollIntervalMs);
         }
       } catch (error) {
         console.error(`[ImapListener] Watch loop error:`, error.message);
-        // Reconnect on error
+        // Try to connect again if disconnected
         try {
-          await this.client.reconnect();
+          await this.client.connect();
+          await this.client.mailboxOpen(this.config.mailbox);
           console.log(`[ImapListener] Reconnected.`);
         } catch (reconnectError) {
           console.error(`[ImapListener] Reconnect failed:`, reconnectError.message);
@@ -114,18 +120,9 @@ class ImapListener {
     
     const lock = await this.client.getMailboxLock(this.config.mailbox);
     try {
-      const waitPromise = this.client.idle.wait();
-      
-      // Check for new mail after IDLE signals
-      const status = await this.client.status(this.config.mailbox, { messages: true, unseen: true });
-      console.log(`[ImapListener] IDLE woke up. Unseen: ${status.unseen || 0}`);
-      
-      // Fetch unseen messages
-      if (status.unseen > 0) {
-        await this._fetchNewEmails();
-      }
-      
-      await waitPromise;
+      // Wait for IDLE signal
+      await this.client.idle();
+      console.log(`[ImapListener] IDLE woke up.`);
     } finally {
       lock.release();
     }
@@ -189,8 +186,19 @@ class ImapListener {
     try {
       const appointment = await this.parser.parseRaw(rawEmail);
       
+      // Skip emails older than the bridge startup time (new ones only)
+      const emailDate = appointment.date || new Date();
+      if (emailDate < this.startTime) {
+        console.log(`[ImapListener] Skipping old email #${uid} from ${emailDate.toISOString()}`);
+        return;
+      }
+      
       // Only forward if it looks like a booking email
-      if (!this.parser.isBookingEmail({ subject: appointment.subject, text: appointment._rawBody })) {
+      if (!this.parser.isBookingEmail({ 
+        subject: appointment.subject, 
+        text: appointment._rawBody,
+        from: appointment.from 
+      }, this.filters)) {
         console.log(`[ImapListener] Email #${uid} is not a booking email, skipping.`);
         return;
       }
@@ -224,9 +232,6 @@ class ImapListener {
     this.running = false;
     if (this._pollTimer) {
       clearTimeout(this._pollTimer);
-    }
-    if (this.client && this.client.idle) {
-      this.client.idle.stop();
     }
     if (this.client) {
       await this.client.logout();

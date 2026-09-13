@@ -1,6 +1,6 @@
 # SalonStream Bridge — Email Parser Edition
 
-Listens to an IMAP mailbox for booking confirmation/reminder emails, parses appointment data, and forwards structured details to Zapier webhooks for WhatsApp message automation.
+Listens to an IMAP mailbox for booking confirmation/reminder emails, parses appointment data, and sends personalized WhatsApp messages — either directly via **WhatChimp** (recommended, no Zapier needed) or via a **Zapier webhook** (legacy fallback).
 
 ## The Problem
 
@@ -12,15 +12,14 @@ Instead of relying on an unavailable API, this bridge **reads booking emails** s
 
 1. **Detects** the email via IMAP IDLE (push) or polling
 2. **Parses** key appointment fields: Location, Date, Service, Time, Phone
-3. **Forwards** the structured data to a Zapier webhook URL
-4. **Zapier triggers** WhatsApp messages (reminders, directions, follow-ups)
+3. **Sends** a personalized WhatsApp message directly through WhatChimp (or forwards to Zapier as a fallback)
 
 ## Architecture
 
 ```
-Salon Email → IMAP Server → SalonStream Bridge → Zapier Webhook → WhatsApp
-    (sends booking       (IDLE/poll)    (parses fields)   (Zapier triggers Twilio/WA)
-     emails)
+Salon Email → IMAP Server → SalonStream Bridge → WhatChimp → WhatsApp
+    (sends booking       (IDLE/poll)    (parses fields,   (direct API,
+     emails)                              sends message)    no Zapier)
 ```
 
 ## Prerequisites
@@ -59,7 +58,14 @@ Salon Email → IMAP Server → SalonStream Bridge → Zapier Webhook → WhatsA
 | `IMAP_PASSWORD` | Yes | - | IMAP password or app password |
 | `IMAP_MAILBOX` | No | `INBOX` | Mailbox folder to watch |
 | `IMAP_POLL_INTERVAL` | No | `30` | Poll interval in seconds (fallback if IDLE not supported) |
-| `ZAPIER_WEBHOOK_URL` | Yes | - | Zapier webhook URL for forwarding appointment data |
+| `ZAPIER_WEBHOOK_URL` | No | - | Zapier webhook URL (legacy fallback if WhatChimp isn't configured) |
+| `WHATCHIMP_API_TOKEN` | Yes* | - | WhatChimp API key (required for direct WhatsApp) |
+| `WHATCHIMP_PHONE_NUMBER_ID` | Yes* | - | Your WhatsApp phone number ID from WhatChimp |
+| `WHATCHIMP_TEMPLATE_NAME` | No | - | Approved booking template name (template messages work anytime) |
+| `WHATCHIMP_LANGUAGE_CODE` | No | `en_US` | Template language code |
+| `WHATCHIMP_DEFAULT_COUNTRY_CODE` | No | `44` | Country code assumed for local numbers |
+
+\* Set **either** the WhatChimp pair **or** `ZAPIER_WEBHOOK_URL`. WhatChimp takes precedence when both are present.
 
 ## Email Format
 
@@ -90,8 +96,12 @@ App/
 ├── index.js            # Main entry point — starts IMAP listener
 ├── imap-listener.js    # IMAP client with IDLE support
 ├── email-parser.js     # Booking email field extractor
-├── webhook-sender.js   # Zapier webhook dispatcher
+├── whatchimp-client.js # Direct WhatChimp WhatsApp API client
+├── whatchimp-sender.js # Maps appointment data → WhatsApp message + sends
+├── webhook-sender.js   # Zapier webhook dispatcher (legacy fallback)
+├── inbox-agent.js      # CLI tool for manual email processing
 ├── test.js             # Parser tests with sample emails
+├── test-whatchimp.js   # WhatChimp client + phone normalization tests
 ├── package.json
 ├── .env.example
 └── README.md

@@ -1,0 +1,28 @@
+{
+  "name": "salonstream-saas",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SalonStream SaaS — multi-tenant automation platform for salon owners (Next.js + Supabase)",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "axios": "^1.7.0",
+    "dotenv": "^16.6.1",
+    "mailparser": "^3.9.9",
+    "next": "^14.2.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "eslint-config-next": "^14.2.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
