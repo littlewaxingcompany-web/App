@@ -1,12 +1,12 @@
 /**
  * GET /api/bookings?salon_id=... — list bookings for a salon.
  *
- * Uses the Supabase service-role client. In production this should be gated
- * by the authenticated user's ownership (Supabase RLS handles this when using
- * the user's own JWT instead of the service key).
+ * Uses the provider-agnostic `lib/db.js`. Returns a clean 503 when the
+ * database isn't configured so the UI can surface a friendly message instead
+ * of erroring out.
  */
 
-import { getSupabaseAdmin } from '../../lib/supabase';
+import { isConfigured, query } from '../../lib/db';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -14,20 +14,21 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const salonId = (req.query.salon_id || '').toString();
-  const db = getSupabaseAdmin();
-
-  if (!db) {
-    return res.status(503).json({ error: 'Supabase not configured' });
+  if (!isConfigured()) {
+    return res.status(503).json({ error: 'DATABASE_URL is not configured' });
   }
 
-  let query = db.from('bookings').select('*').order('created_at', { ascending: false });
-  if (salonId) query = query.eq('salon_id', salonId);
+  const salonId = (req.query.salon_id || '').toString();
 
-  const { data, error } = await query.limit(100);
+  const text = salonId
+    ? 'SELECT * FROM bookings WHERE salon_id = $1 ORDER BY created_at DESC LIMIT 100'
+    : 'SELECT * FROM bookings ORDER BY created_at DESC LIMIT 100';
+  const params = salonId ? [salonId] : [];
+
+  const { rows, error } = await query(text, params);
   if (error) {
     return res.status(500).json({ error: error.message });
   }
 
-  return res.status(200).json({ bookings: data });
+  return res.status(200).json({ bookings: rows });
 }

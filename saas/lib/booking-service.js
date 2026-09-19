@@ -6,14 +6,15 @@
  *   inbound email -> EmailParser -> (filter) -> persist booking -> send WhatsApp
  *                                                       -> log the outcome
  *
- * This is the backend home for the logic that previously lived in the
- * standalone bridge (imap-listener.js + webhook-sender.js). It reuses the
- * exact same EmailParser so parsing behavior stays consistent.
+ * Persistence goes through the provider-agnostic `lib/db.js` (single
+ * `DATABASE_URL`), so it works on Supabase Postgres, Neon, or any Postgres.
+ * Every DB write is best-effort and degrades gracefully when the database is
+ * not yet connected.
  */
 
 const EmailParser = require('./email-parser');
 const WhatChimpClient = require('./whatchimp-client');
-const { getSupabaseAdmin } = require('./supabase');
+const { query } = require('./db');
 
 const parser = new EmailParser();
 
@@ -52,7 +53,6 @@ async function processBookingEmail(emailData, salon) {
  * Persist a parsed appointment as a booking row.
  */
 async function saveBooking(salon, appointment, emailData) {
-  const db = getSupabaseAdmin();
   const row = {
     salon_id: salon.id,
     client_name: appointment.client_name || null,
@@ -68,18 +68,24 @@ async function saveBooking(salon, appointment, emailData) {
     source_email: emailData.from || null,
   };
 
-  if (!db) {
-    // No Supabase configured yet — return the would-be row for testing.
-    console.log('[BookingService] Supabase not configured; skipping persist. Row:', row);
-    return { id: null, ...row };
-  }
+  const { rows, error } = await query(
+    `INSERT INTO bookings
+       (salon_id, client_name, client_phone, client_email, service, staff,
+        date_appointment, time_appointment, location, status, raw_payload, source_email)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12)
+     RETURNING *`,
+    [
+      row.salon_id, row.client_name, row.client_phone, row.client_email,
+      row.service, row.staff, row.date_appointment, row.time_appointment,
+      row.location, row.status, JSON.stringify(row.raw_payload), row.source_email,
+    ]
+  );
 
-  const { data, error } = await db.from('bookings').insert(row).select().single();
   if (error) {
     console.error('[BookingService] Failed to persist booking:', error.message);
     return { id: null, ...row };
   }
-  return data;
+  return rows[0];
 }
 
 /**
@@ -135,23 +141,21 @@ function buildTextMessage(appointment) {
  * Append a log row.
  */
 async function logMessage(salon, booking, event, status, payload) {
-  const db = getSupabaseAdmin();
-  const row = {
-    salon_id: salon.id,
-    booking_id: booking && booking.id ? booking.id : null,
-    channel: 'whatchimp',
-    event,
-    status,
-    wa_message_id: (payload && payload.wa_message_id) || null,
-    payload,
-  };
+  const { rows, error } = await query(
+    `INSERT INTO logs (salon_id, booking_id, channel, event, status, wa_message_id, payload)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+     RETURNING *`,
+    [
+      salon.id,
+      booking && booking.id ? booking.id : null,
+      'whatchimp',
+      event,
+      status,
+      (payload && payload.wa_message_id) || null,
+      JSON.stringify(payload),
+    ]
+  );
 
-  if (!db) {
-    console.log('[BookingService] Supabase not configured; skipping log. Row:', row);
-    return;
-  }
-
-  const { error } = await db.from('logs').insert(row);
   if (error) {
     console.error('[BookingService] Failed to write log:', error.message);
   }
