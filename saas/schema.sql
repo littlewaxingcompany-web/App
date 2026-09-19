@@ -1,17 +1,22 @@
 -- ============================================================================
--- SalonStream SaaS — Database Schema (Supabase / PostgreSQL)
+-- SalonStream SaaS — Database Schema (Provider-Agnostic PostgreSQL)
 -- ============================================================================
 -- Multi-tenant schema for the SalonStream platform.
+--
+-- This file targets plain PostgreSQL and works on Supabase, Neon, or any other
+-- Postgres host. The application connects via a single `DATABASE_URL`
+-- connection string (see `saas/lib/db.js`).
+--
 -- Tenancy model: a "user" (account owner) has one or more "salons".
 -- Bookings are captured per salon; every outbound message is recorded in "logs".
 --
--- This file is written for Supabase's PostgreSQL. Run it in the Supabase SQL
--- editor (or via `supabase db push`). Row Level Security (RLS) policies tie
--- every row to the authenticated `auth.uid()`, enforcing multi-tenant isolation.
+-- Row Level Security policies are provided in a clearly-marked OPTIONAL section
+-- at the bottom. Those require Supabase Auth (the `auth` schema + `auth.uid()`)
+-- and are only applied when you run them inside Supabase.
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
--- Extension (Supabase provides this, but keep it explicit for local dev)
+-- Extension (harmless if already present)
 -- ----------------------------------------------------------------------------
 create extension if not exists "pgcrypto";
 
@@ -25,11 +30,14 @@ create type message_status as enum ('pending', 'sent', 'delivered', 'read', 'fai
 
 -- ----------------------------------------------------------------------------
 -- users
--- One row per account owner (1:1 with Supabase auth.users).
+-- One row per account owner.
+-- `auth_id` optionally links to an external identity provider (e.g. Supabase
+-- Auth's auth.users). It is nullable and has NO foreign key so this schema
+-- also works on Neon / plain Postgres, which have no `auth` schema.
 -- ----------------------------------------------------------------------------
 create table if not exists public.users (
   id          uuid primary key default gen_random_uuid(),
-  auth_id     uuid unique not null references auth.users (id) on delete cascade,
+  auth_id     uuid unique,                 -- external auth id (e.g. Supabase Auth), optional
   email       text not null,
   full_name   text,
   plan        plan_tier not null default 'lite',
@@ -48,13 +56,12 @@ create table if not exists public.salons (
   -- Ovatu email filtering (which inbound emails belong to this salon)
   email_filter_sender text not null default 'reservations@ovatu.com',
   email_filter_subject text,
-  -- WhatChimp messaging config (encrypted at rest by your app layer; store the
-  -- api token carefully — do not log it).
-  whatchimp_api_token      text,
+  -- WhatChimp messaging config. Store the api token carefully — do not log it.
+  whatchimp_api_token       text,
   whatchimp_phone_number_id text,
-  whatchimp_template_name  text,
-  whatchimp_language_code  text default 'en_US',
-  default_country_code     text default '44',
+  whatchimp_template_name   text,
+  whatchimp_language_code   text default 'en_US',
+  default_country_code      text default '44',
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now()
 );
@@ -110,47 +117,6 @@ create index if not exists logs_booking_id_idx on public.logs (booking_id);
 create index if not exists logs_created_at_idx on public.logs (created_at desc);
 
 -- ----------------------------------------------------------------------------
--- Row Level Security
--- Every table is tenant-scoped to the authenticated user via the
--- user -> salons ownership chain.
--- ----------------------------------------------------------------------------
-alter table public.users enable row level security;
-alter table public.salons enable row level security;
-alter table public.bookings enable row level security;
-alter table public.logs enable row level security;
-
--- Helper: returns true when the authenticated user owns the given salon.
-create or replace function public.owns_salon(_salon_id uuid)
-returns boolean language sql stable security definer as $$
-  select exists (
-    select 1 from public.salons s
-    where s.id = _salon_id
-      and s.user_id = (select u.id from public.users u where u.auth_id = auth.uid())
-  );
-$$;
-
--- users: a user can only see/update their own row.
-create policy "users_select_own" on public.users
-  for select using (auth_id = auth.uid());
-create policy "users_update_own" on public.users
-  for update using (auth_id = auth.uid());
-
--- salons: owner CRUD.
-create policy "salons_all_owner" on public.salons
-  for all using (user_id = (select id from public.users where auth_id = auth.uid()))
-  with check (user_id = (select id from public.users where auth_id = auth.uid()));
-
--- bookings: accessible only via an owned salon.
-create policy "bookings_all_owner" on public.bookings
-  for all using (public.owns_salon(salon_id))
-  with check (public.owns_salon(salon_id));
-
--- logs: accessible only via an owned salon.
-create policy "logs_all_owner" on public.logs
-  for all using (public.owns_salon(salon_id))
-  with check (public.owns_salon(salon_id));
-
--- ----------------------------------------------------------------------------
 -- updated_at trigger
 -- ----------------------------------------------------------------------------
 create or replace function public.set_updated_at()
@@ -172,3 +138,38 @@ create trigger salons_set_updated_at before update on public.salons
 drop trigger if exists bookings_set_updated_at on public.bookings;
 create trigger bookings_set_updated_at before update on public.bookings
   for each row execute function public.set_updated_at();
+
+-- ============================================================================
+-- OPTIONAL: Supabase Row Level Security (run only inside Supabase)
+-- ============================================================================
+-- The statements below enforce tenant isolation using Supabase Auth's
+-- `auth.uid()`. They require the Supabase `auth` schema and are NOT part of a
+-- plain-Neon/Postgres setup (where the app enforces tenancy itself via the
+-- `DATABASE_URL` service connection). Uncomment/run them only if you use
+-- Supabase Auth and want database-level RLS.
+
+-- alter table public.users enable row level security;
+-- alter table public.salons enable row level security;
+-- alter table public.bookings enable row level security;
+-- alter table public.logs enable row level security;
+
+-- create or replace function public.owns_salon(_salon_id uuid)
+-- returns boolean language sql stable security definer as $$
+--   select exists (
+--     select 1 from public.salons s
+--     where s.id = _salon_id
+--       and s.user_id = (select u.id from public.users u where u.auth_id = auth.uid())
+--   );
+-- $$;
+
+-- create policy "users_select_own" on public.users
+--   for select using (auth_id = auth.uid());
+-- create policy "users_update_own" on public.users
+--   for update using (auth_id = auth.uid());
+-- create policy "salons_all_owner" on public.salons
+--   for all using (user_id = (select id from public.users where auth_id = auth.uid()))
+--   with check (user_id = (select id from public.users where auth_id = auth.uid()));
+-- create policy "bookings_all_owner" on public.bookings
+--   for all using (public.owns_salon(salon_id)) with check (public.owns_salon(salon_id));
+-- create policy "logs_all_owner" on public.logs
+--   for all using (public.owns_salon(salon_id)) with check (public.owns_salon(salon_id));
