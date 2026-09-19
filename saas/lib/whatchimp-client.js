@@ -7,14 +7,8 @@
  *
  * API reference: https://help.whatchimp.com/docs/whatchimp-apis
  *
- * Endpoint: POST/GET https://app.whatchimp.com/api/v1/whatsapp/send
- * Auth:     `apiToken` + `phone_number_id` (passed as request params, not headers)
- *
- * Two message kinds are supported because WhatsApp enforces a 24-hour
- * session window for free-form text:
- *   - sendMessage()          -> free-form text (only within a 24h window)
- *   - sendTemplateMessage()  -> pre-approved template (works anytime; use this
- *                               for reminders, confirmations and follow-ups)
+ * Template Endpoint: POST https://app.whatchimp.com/api/v1/whatsapp/send/template
+ * Auth:             `apiToken` + `phone_number_id` (passed as request params)
  */
 
 const axios = require('axios');
@@ -24,9 +18,9 @@ const DEFAULT_BASE_URL = 'https://app.whatchimp.com';
 class WhatChimpClient {
   /**
    * @param {Object} options
-   * @param {string} options.apiToken - WhatChimp API key (from API Developer Console)
-   * @param {string} options.phoneNumberId - WhatsApp phone number ID
-   * @param {string} [options.baseUrl] - API base URL (default: https://app.whatchimp.com)
+   * @param {string} options.apiToken - WhatChimp API key
+   * @param {string} options.phoneNumberId - WhatsApp phone number ID (from WhatChimp list)
+   * @param {string} [options.baseUrl] - API base URL
    * @param {string} [options.defaultCountryCode] - used when normalizing local numbers (default: '44')
    */
   constructor({ apiToken, phoneNumberId, baseUrl = DEFAULT_BASE_URL, defaultCountryCode = '44' }) {
@@ -42,53 +36,50 @@ class WhatChimpClient {
     this.defaultCountryCode = String(defaultCountryCode);
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.client = axios.create({
+      baseURL: this.baseUrl,
       timeout: 15000,
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'SalonStream-WhatChimpClient/1.0',
+        'User-Agent': 'SalonStream-WhatChimpClient/1.1',
       },
     });
   }
 
   /**
-   * Send a free-form text message.
-   *
-   * IMPORTANT: WhatsApp only allows free-form text within the 24-hour session
-   * window (after the customer last messaged you). For reminders, booking
-   * confirmations or follow-ups sent later, use sendTemplateMessage().
-   *
-   * @param {string} phone - Recipient phone number (any format; normalized internally)
+   * Send a free-form text message (only works within 24h window).
+   * 
+   * @param {string} phone - Recipient phone number
    * @param {string} text - Message body
-   * @returns {Promise<Object>} API response ({ status, wa_message_id, message })
+   * @returns {Promise<Object>} API response
    */
   async sendMessage(phone, text) {
     if (!text || !String(text).trim()) {
       throw new Error('WhatChimpClient.sendMessage: text is required');
     }
-    return this._send({
+    return this._send('/api/v1/whatsapp/send', {
       phone_number: this.normalizePhone(phone),
       message: String(text),
     });
   }
 
   /**
-   * Send a pre-approved template message (works anytime, no 24h window).
+   * Send a pre-approved template message (works anytime).
    *
    * @param {string} phone - Recipient phone number
-   * @param {string} templateName - Approved template name (e.g. "booking_confirmation")
+   * @param {string} templateId - WhatChimp INTERNAL ID (e.g. "443476")
    * @param {Object} [options]
    * @param {string} [options.languageCode] - Template language code (default: 'en_US')
    * @param {Array<string>} [options.variables] - Values for {{1}}, {{2}}, ... in order
    * @returns {Promise<Object>} API response
    */
-  async sendTemplateMessage(phone, templateName, { languageCode = 'en_US', variables = [] } = {}) {
-    if (!templateName) {
-      throw new Error('WhatChimpClient.sendTemplateMessage: templateName is required');
+  async sendTemplateMessage(phone, templateId, { languageCode = 'en_US', variables = [] } = {}) {
+    if (!templateId) {
+      throw new Error('WhatChimpClient.sendTemplateMessage: templateId is required');
     }
 
     const params = {
       phone_number: this.normalizePhone(phone),
-      template_name: templateName,
+      template_id: templateId, // WhatChimp uses 'template_id' for their internal numeric ID
       language_code: languageCode,
     };
 
@@ -97,20 +88,15 @@ class WhatChimpClient {
       params[`variable${index + 1}`] = value == null ? '' : String(value);
     });
 
-    return this._send(params);
+    // Template sends MUST use the /send/template endpoint to bypass the 24h window
+    return this._send('/api/v1/whatsapp/send/template', params);
   }
 
   /**
-   * Normalize a phone number into the numeric E.164-style format WhatChimp
-   * expects (country code + number, digits only, no leading '+').
-   *
-   * Examples:
-   *   '07700 900000'      -> '447700900000'  (UK local -> +44)
-   *   '+44 7700 900000'   -> '447700900000'
-   *   '919999999999'      -> '919999999999'  (already international)
+   * Normalize a phone number into the numeric E.164-style format.
    *
    * @param {string} phone - Raw phone number
-   * @returns {string} Normalized digits-only number with country code
+   * @returns {string} Normalized digits-only number
    */
   normalizePhone(phone) {
     if (phone == null) return '';
@@ -120,8 +106,6 @@ class WhatChimpClient {
       digits = digits.slice(1);
     }
 
-    // Local number starting with a leading zero -> assume it's missing the
-    // country code and prepend the default country code.
     if (digits.startsWith('0')) {
       digits = this.defaultCountryCode + digits.slice(1);
     }
@@ -130,26 +114,27 @@ class WhatChimpClient {
   }
 
   /**
-   * Shared low-level send. POSTs form-encoded params to /api/v1/whatsapp/send.
+   * Shared low-level send. POSTs form-encoded params.
    *
-   * @param {Object} extraParams - message-specific params (phone_number + message, etc.)
+   * @param {string} endpoint - API endpoint
+   * @param {Object} extraParams - message-specific params
    * @returns {Promise<Object>} Parsed JSON response body
    */
-  async _send(extraParams) {
-    const params = new URLSearchParams({
-      apiToken: this.apiToken,
-      phone_number_id: this.phoneNumberId,
-      ...extraParams,
+  async _send(endpoint, extraParams) {
+    const params = new URLSearchParams();
+    params.append('apiToken', this.apiToken);
+    params.append('phone_number_id', this.phoneNumberId);
+    
+    Object.entries(extraParams).forEach(([key, value]) => {
+      params.append(key, value);
     });
 
-    console.log(`[WhatChimpClient] Sending WhatsApp message to ${extraParams.phone_number}...`);
+    console.log(`[WhatChimpClient] Sending WhatsApp request to ${extraParams.phone_number} via ${endpoint}...`);
 
     try {
-      const response = await this.client.post('/api/v1/whatsapp/send', params);
+      const response = await this.client.post(endpoint, params);
       const body = response.data;
 
-      // WhatChimp returns HTTP 200 even for logical failures, signalling the
-      // outcome via the `status` field ("1" = success, "0" = failure).
       if (body && body.status === '0') {
         throw new Error(`WhatChimp rejected message: ${body.message || 'unknown error'}`);
       }

@@ -100,15 +100,13 @@ async function sendWhatsApp(salon, appointment, booking) {
 
   try {
     let response;
-    if (salon.whatchimp_template_name) {
-      response = await client.sendTemplateMessage(appointment.phone, salon.whatchimp_template_name, {
+    if (salon.whatchimp_template_id) {
+      response = await client.sendTemplateMessage(appointment.phone, salon.whatchimp_template_id, {
         languageCode: salon.whatchimp_language_code || 'en_US',
         variables: [
           appointment.client_name || '',
-          appointment.service || '',
           appointment.date_appointment || '',
           appointment.time || '',
-          appointment.location || '',
         ],
       });
     } else {

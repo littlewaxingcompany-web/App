@@ -59,6 +59,7 @@ create table if not exists public.salons (
   -- WhatChimp messaging config. Store the api token carefully — do not log it.
   whatchimp_api_token       text,
   whatchimp_phone_number_id text,
+  whatchimp_template_id     text,
   whatchimp_template_name   text,
   whatchimp_language_code   text default 'en_US',
   default_country_code      text default '44',

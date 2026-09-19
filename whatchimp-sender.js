@@ -14,7 +14,7 @@ class WhatChimpSender {
    * @param {Object} options
    * @param {string} options.apiToken - WhatChimp API key
    * @param {string} options.phoneNumberId - WhatsApp phone number ID
-   * @param {string} [options.templateName] - Approved booking template name.
+   * @param {string} [options.templateId] - Approved booking template internal ID.
    *        When set, sends a template message (works anytime). When omitted,
    *        falls back to a free-form text message (24h window only).
    * @param {string} [options.languageCode] - Template language (default 'en_US')
@@ -23,12 +23,12 @@ class WhatChimpSender {
   constructor({
     apiToken,
     phoneNumberId,
-    templateName = '',
+    templateId = '',
     languageCode = 'en_US',
     defaultCountryCode = '44',
   }) {
     this.client = new WhatChimpClient({ apiToken, phoneNumberId, defaultCountryCode });
-    this.templateName = templateName;
+    this.templateId = templateId;
     this.languageCode = languageCode;
   }
 
@@ -46,12 +46,12 @@ class WhatChimpSender {
 
     const message = this._formatMessage(appointment);
 
-    if (this.templateName) {
-      console.log(`[WhatChimpSender] Sending via template "${this.templateName}"...`);
-      return this.client.sendTemplateMessage(phone, this.templateName, {
+    if (this.templateId) {
+      console.log(`[WhatChimpSender] Sending via template ID "${this.templateId}"...`);
+      return this.client.sendTemplateMessage(phone, this.templateId, {
         languageCode: this.languageCode,
         // Order of variables must match {{1}}, {{2}}, ... in the approved
-        // template. The approved `booking_confirmation` body is:
+        // template. The approved `booking_confirmation_new` body is:
         //   "Hello {{1}} ... booked for {{2}} at {{3}}."
         // so we send exactly three variables: name, date, time.
         variables: [
