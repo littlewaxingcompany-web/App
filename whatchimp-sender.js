@@ -50,13 +50,14 @@ class WhatChimpSender {
       console.log(`[WhatChimpSender] Sending via template "${this.templateName}"...`);
       return this.client.sendTemplateMessage(phone, this.templateName, {
         languageCode: this.languageCode,
-        // Order of variables must match {{1}}, {{2}}, ... in the template.
+        // Order of variables must match {{1}}, {{2}}, ... in the approved
+        // template. The approved `booking_confirmation` body is:
+        //   "Hello {{1}} ... booked for {{2}} at {{3}}."
+        // so we send exactly three variables: name, date, time.
         variables: [
           appointment.client_name || '',
-          appointment.service || '',
           appointment.date_appointment || '',
           appointment.time || '',
-          appointment.location || '',
         ],
       });
     }

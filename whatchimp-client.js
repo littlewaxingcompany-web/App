@@ -42,6 +42,7 @@ class WhatChimpClient {
     this.defaultCountryCode = String(defaultCountryCode);
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.client = axios.create({
+      baseURL: this.baseUrl,
       timeout: 15000,
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -97,6 +98,9 @@ class WhatChimpClient {
       params[`variable${index + 1}`] = value == null ? '' : String(value);
     });
 
+    // Regular template messages use the same /api/v1/whatsapp/send endpoint as
+    // text messages (with template_name + language_code + variableN). The
+    // /api/v1/whatsapp/send/template endpoint is only for Quick Reply templates.
     return this._send(params);
   }
 
@@ -133,19 +137,20 @@ class WhatChimpClient {
    * Shared low-level send. POSTs form-encoded params to /api/v1/whatsapp/send.
    *
    * @param {Object} extraParams - message-specific params (phone_number + message, etc.)
+   * @param {string} [endpoint] - API endpoint (default: /api/v1/whatsapp/send)
    * @returns {Promise<Object>} Parsed JSON response body
    */
-  async _send(extraParams) {
+  async _send(extraParams, endpoint = '/api/v1/whatsapp/send') {
     const params = new URLSearchParams({
       apiToken: this.apiToken,
       phone_number_id: this.phoneNumberId,
       ...extraParams,
     });
 
-    console.log(`[WhatChimpClient] Sending WhatsApp message to ${extraParams.phone_number}...`);
+    console.log(`[WhatChimpClient] Sending WhatsApp message to ${extraParams.phone_number} via ${endpoint}...`);
 
     try {
-      const response = await this.client.post('/api/v1/whatsapp/send', params);
+      const response = await this.client.post(endpoint, params);
       const body = response.data;
 
       // WhatChimp returns HTTP 200 even for logical failures, signalling the
