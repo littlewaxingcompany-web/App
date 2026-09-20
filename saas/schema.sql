@@ -41,6 +41,9 @@ create table if not exists public.users (
   email       text not null,
   full_name   text,
   plan        plan_tier not null default 'lite',
+  -- Stripe billing links (populated by the /api/webhooks/stripe handler)
+  stripe_customer_id     text,
+  stripe_subscription_id text,
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
 );
