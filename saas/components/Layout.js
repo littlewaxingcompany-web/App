@@ -9,6 +9,7 @@ export default function Layout({ children, title }) {
       <header className="navbar container">
         <Link href="/" className="logo">SalonStream</Link>
         <nav>
+          <Link href="/pricing">Pricing</Link>
           <Link href="/dashboard">Dashboard</Link>
         </nav>
       </header>

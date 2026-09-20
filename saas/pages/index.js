@@ -13,7 +13,10 @@ export default function Home() {
           reminders, confirmations and follow-ups. Direct WhatChimp integration,
           no Zapier required.
         </p>
-        <a className="btn" href="/dashboard">Go to dashboard →</a>
+        <div className="hero-actions">
+          <a className="btn" href="/pricing">See pricing →</a>
+          <a className="btn btn-outline" href="/dashboard">Go to dashboard</a>
+        </div>
       </section>
 
       <section className="grid">
