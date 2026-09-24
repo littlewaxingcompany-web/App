@@ -56,6 +56,9 @@ create table if not exists public.salons (
   id                  uuid primary key default gen_random_uuid(),
   user_id             uuid not null references public.users (id) on delete cascade,
   name                text not null,
+  -- Forwarding-email slug (unique) + physical address, set during onboarding.
+  slug                text,
+  address             text,
   -- Ovatu email filtering (which inbound emails belong to this salon)
   email_filter_sender text not null default 'reservations@ovatu.com',
   email_filter_subject text,
@@ -71,6 +74,8 @@ create table if not exists public.salons (
 
 create index if not exists salons_user_id_idx on public.salons (user_id);
 create index if not exists salons_email_filter_sender_idx on public.salons (email_filter_sender);
+-- Slug is globally unique: it is the local part of each salon's forwarding email.
+create unique index if not exists salons_slug_key on public.salons (slug);
 
 -- ----------------------------------------------------------------------------
 -- bookings
