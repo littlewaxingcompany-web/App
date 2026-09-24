@@ -1,14 +1,21 @@
 /**
- * WhatChimp Client
+ * WhatChimp Client (Coexistence / Multi-Device)
  *
  * Direct WhatsApp messaging client for WhatChimp (https://www.whatchimp.com).
- * Replaces the Zapier webhook hop so SalonStream can send WhatsApp messages
- * straight from parsed booking data without paying for Zapier.
+ * Sends WhatsApp messages straight from parsed booking data.
  *
  * API reference: https://help.whatchimp.com/docs/whatchimp-apis
  *
  * Endpoint: POST/GET https://app.whatchimp.com/api/v1/whatsapp/send
  * Auth:     `apiToken` + `phone_number_id` (passed as request params, not headers)
+ *
+ * Coexistence model:
+ *   - `apiToken` is SalonStream's single WhatChimp account token, configured
+ *     once in the backend (WHATCHIMP_API_TOKEN). It is the SAME for all salons.
+ *   - `phoneNumberId` is PER-SALON: it is the device/instance id that WhatChimp
+ *     assigns when a salon connects its WhatsApp Business number via the
+ *     Coexistence QR-code flow (Meta Embedded Signup). We store it on the salon
+ *     as `whatchimp_instance_id` and pass it here on every send.
  *
  * Two message kinds are supported because WhatsApp enforces a 24-hour
  * session window for free-form text:
@@ -23,21 +30,31 @@ const DEFAULT_BASE_URL = 'https://app.whatchimp.com';
 
 class WhatChimpClient {
   /**
-   * @param {Object} options
-   * @param {string} options.apiToken - WhatChimp API key (from API Developer Console)
-   * @param {string} options.phoneNumberId - WhatsApp phone number ID
+   * @param {Object} [options]
+   * @param {string} [options.apiToken] - WhatChimp API key. Defaults to `WHATCHIMP_API_TOKEN`.
+   * @param {string} [options.phoneNumberId] - Per-salon device/instance id
+   *   (WhatChimp `phone_number_id`, stored on the salon as `whatchimp_instance_id`).
    * @param {string} [options.baseUrl] - API base URL (default: https://app.whatchimp.com)
    * @param {string} [options.defaultCountryCode] - used when normalizing local numbers (default: '44')
    */
-  constructor({ apiToken, phoneNumberId, baseUrl = DEFAULT_BASE_URL, defaultCountryCode = '44' }) {
-    if (!apiToken) {
-      throw new Error('WhatChimpClient: apiToken is required');
+  constructor({
+    apiToken,
+    phoneNumberId,
+    baseUrl = DEFAULT_BASE_URL,
+    defaultCountryCode = '44',
+  } = {}) {
+    const token = apiToken || process.env.WHATCHIMP_API_TOKEN;
+
+    if (!token) {
+      throw new Error('WhatChimpClient: apiToken is required (set WHATCHIMP_API_TOKEN)');
     }
     if (!phoneNumberId) {
-      throw new Error('WhatChimpClient: phoneNumberId is required');
+      throw new Error(
+        'WhatChimpClient: phoneNumberId is required (salon has no connected WhatsApp instance)'
+      );
     }
 
-    this.apiToken = apiToken;
+    this.apiToken = token;
     this.phoneNumberId = phoneNumberId;
     this.defaultCountryCode = String(defaultCountryCode);
     this.baseUrl = baseUrl.replace(/\/+$/, '');
@@ -48,6 +65,15 @@ class WhatChimpClient {
         'User-Agent': 'SalonStream-WhatChimpClient/1.0',
       },
     });
+  }
+
+  /**
+   * True when the shared WhatChimp account token is available in the backend
+   * env. (Each salon additionally needs its own connected instance id, which is
+   * checked separately by the booking service.)
+   */
+  static isConfigured() {
+    return Boolean(process.env.WHATCHIMP_API_TOKEN);
   }
 
   /**

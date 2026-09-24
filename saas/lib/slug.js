@@ -38,3 +38,23 @@ export function isValidSlug(slug) {
 export function forwardingEmail(slug) {
   return `${slug}@${FORWARDING_EMAIL_DOMAIN}`;
 }
+
+/**
+ * Extract the salon slug from a forwarding-email address (the local part before
+ * `@`). Returns the normalized slug when the address uses the configured
+ * forwarding domain, otherwise `null`.
+ *
+ * Accepts a bare address ("foo@salonstream.app") or one with a display name
+ * ("My Salon <foo@salonstream.app>"). Used to resolve the tenant from an
+ * inbound email's recipient (To) address.
+ */
+export function slugFromAddress(address) {
+  if (!address) return null;
+  const match = String(address).match(/<?([^<>\s@]+)@([^<>\s@]+)>?/);
+  if (!match) return null;
+  const local = match[1];
+  const domain = match[2].toLowerCase();
+  if (domain !== FORWARDING_EMAIL_DOMAIN.toLowerCase()) return null;
+  const slug = normalizeSlug(local);
+  return isValidSlug(slug) ? slug : null;
+}
