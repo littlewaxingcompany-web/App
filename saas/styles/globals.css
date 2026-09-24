@@ -104,6 +104,16 @@ a {
   background: var(--brand);
   color: #fff;
 }
+/* WhatsApp connection action — native green so "Connect WhatsApp" reads as a
+   first-party WhatsApp step, not a link out to a third-party tool. */
+.btn-whatsapp {
+  background: #25d366;
+  color: #0b3d2e;
+}
+.btn-whatsapp:hover {
+  background: #1da851;
+  color: #0b3d2e;
+}
 .btn[disabled] {
   opacity: 0.6;
   cursor: not-allowed;

@@ -9,7 +9,7 @@ import {
 /**
  * POST /api/onboarding — save a salon owner's first salon.
  *
- * Body: { name, slug, address?, userId?, email?, whatchimpInstanceId? }
+ * Body: { name, slug, address?, userId?, email?, whatsappInstanceId? }
  *
  * Messaging uses the "Coexistence" model: the owner connects their WhatsApp
  * Business number via a QR code (WhatChimp Multi-Device flow) and we store the
@@ -37,11 +37,11 @@ export default async function handler(req, res) {
   const address = String(body.address || '').trim();
   const userId = body.userId || null;
   const email = body.email || null;
-  // Coexistence: the WhatChimp device/instance id returned after the owner
+  // Coexistence: the WhatsApp device/instance id returned after the owner
   // connects their WhatsApp Business number via the QR-code flow. Optional at
   // signup time (the owner may connect later); trim whitespace when present.
-  const whatchimpInstanceId =
-    body.whatchimpInstanceId != null ? String(body.whatchimpInstanceId).trim() : null;
+  const whatsappInstanceId =
+    body.whatsappInstanceId != null ? String(body.whatsappInstanceId).trim() : null;
 
   if (!name) {
     return res.status(400).json({ error: 'Salon name is required.' });
@@ -92,7 +92,7 @@ export default async function handler(req, res) {
       `INSERT INTO salons (user_id, name, slug, address, whatchimp_instance_id)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id, slug`,
-      [ownerId, name, slug, address || null, whatchimpInstanceId || null]
+      [ownerId, name, slug, address || null, whatsappInstanceId || null]
     );
 
     await client.query('COMMIT');
