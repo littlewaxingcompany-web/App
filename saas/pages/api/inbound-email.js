@@ -17,6 +17,7 @@
 
 import { normalizeInboundEmail } from '../../lib/inbound-email';
 import { processBookingEmail } from '../../lib/booking-service';
+import { slugFromAddress } from '../../lib/slug';
 import { isConfigured, query } from '../../lib/db';
 
 export default async function handler(req, res) {
@@ -37,14 +38,29 @@ export default async function handler(req, res) {
   const body = req.body || {};
   const email = normalizeInboundEmail(provider, body);
 
-  // Resolve the salon: explicit salon_id wins, otherwise match by filter sender.
+  // Resolve the salon (tenant). Order of precedence:
+  //   1. Explicit `salon_id` (query param or `x-salon-id` header).
+  //   2. Forwarding-email slug — the recipient (To) address `<slug>@<domain>`
+  //      is unique per salon, so this correctly attributes usage per customer.
+  //   3. Fallback: `email_filter_sender` (the booking sender), for backward
+  //      compatibility with pre-forwarding-email setups.
   const salonId = (req.query.salon_id || req.headers['x-salon-id'] || '').toString();
 
   let salon = null;
   if (salonId) {
     const { rows, error } = await query('SELECT * FROM salons WHERE id = $1 LIMIT 1', [salonId]);
     if (!error && rows.length) salon = rows[0];
-  } else {
+  }
+
+  if (!salon && email.to) {
+    const slug = slugFromAddress(email.to);
+    if (slug) {
+      const { rows, error } = await query('SELECT * FROM salons WHERE slug = $1 LIMIT 1', [slug]);
+      if (!error && rows.length) salon = rows[0];
+    }
+  }
+
+  if (!salon) {
     const sender = (email.from || '').toLowerCase();
     const { rows, error } = await query(
       'SELECT * FROM salons WHERE lower(email_filter_sender) = $1 LIMIT 1',
@@ -56,7 +72,8 @@ export default async function handler(req, res) {
   if (!salon) {
     return res.status(404).json({
       status: 'no_salon',
-      error: 'No salon matched this inbound email. Configure salon_id or email_filter_sender.',
+      error:
+        'No salon matched this inbound email. Use a forwarding address (<slug>@salonstream.app), or configure salon_id or email_filter_sender.',
     });
   }
 

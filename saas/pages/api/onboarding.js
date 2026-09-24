@@ -7,11 +7,15 @@ import {
 } from '../../lib/slug';
 
 /**
- * POST /api/onboarding — save a salon owner's first salon and its messaging
- * configuration.
+ * POST /api/onboarding — save a salon owner's first salon.
  *
- * Body: { name, slug, address?, whatchimpApiToken?, whatchimpPhoneNumberId?,
- *         whatchimpTemplateName?, userId?, email? }
+ * Body: { name, slug, address?, userId?, email?, whatchimpInstanceId? }
+ *
+ * Messaging uses the "Coexistence" model: the owner connects their WhatsApp
+ * Business number via a QR code (WhatChimp Multi-Device flow) and we store the
+ * resulting device/instance id in `salons.whatchimp_instance_id`. The shared
+ * WhatChimp API token lives in the backend env (WHATCHIMP_API_TOKEN) and is
+ * never entered by the owner.
  *
  * `userId`/`email` are optional. When neither is supplied (auth not yet wired),
  * a placeholder owner user is created so the salon has a tenant to attach to.
@@ -31,17 +35,13 @@ export default async function handler(req, res) {
   const name = String(body.name || '').trim();
   const slug = normalizeSlug(body.slug);
   const address = String(body.address || '').trim();
-  const whatchimpApiToken = String(
-    body.whatchimpApiToken || body.whatchimp_api_token || ''
-  ).trim();
-  const whatchimpPhoneNumberId = String(
-    body.whatchimpPhoneNumberId || body.whatchimp_phone_number_id || ''
-  ).trim();
-  const whatchimpTemplateName = String(
-    body.whatchimpTemplateName || body.whatchimp_template_name || ''
-  ).trim();
   const userId = body.userId || null;
   const email = body.email || null;
+  // Coexistence: the WhatChimp device/instance id returned after the owner
+  // connects their WhatsApp Business number via the QR-code flow. Optional at
+  // signup time (the owner may connect later); trim whitespace when present.
+  const whatchimpInstanceId =
+    body.whatchimpInstanceId != null ? String(body.whatchimpInstanceId).trim() : null;
 
   if (!name) {
     return res.status(400).json({ error: 'Salon name is required.' });
@@ -89,20 +89,10 @@ export default async function handler(req, res) {
     }
 
     const inserted = await client.query(
-      `INSERT INTO salons
-         (user_id, name, slug, address,
-          whatchimp_api_token, whatchimp_phone_number_id, whatchimp_template_name)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO salons (user_id, name, slug, address, whatchimp_instance_id)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING id, slug`,
-      [
-        ownerId,
-        name,
-        slug,
-        address || null,
-        whatchimpApiToken || null,
-        whatchimpPhoneNumberId || null,
-        whatchimpTemplateName || null,
-      ]
+      [ownerId, name, slug, address || null, whatchimpInstanceId || null]
     );
 
     await client.query('COMMIT');

@@ -2,14 +2,28 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { slugify, isValidSlug, forwardingEmail } from '../lib/slug';
 
-const STEPS = ['Salon profile', 'Messaging', 'Automation setup'];
+const STEPS = ['Salon profile', 'Connect WhatsApp'];
+
+/**
+ * Where the owner connects their WhatsApp Business number. This is WhatChimp's
+ * Coexistence / Multi-Device flow (Meta Embedded Signup): it shows a QR code
+ * the owner scans with their existing WhatsApp Business app, linking the app
+ * and the API without changing number or giving up the app. We open this page
+ * in a new tab; after completing it the owner gets back a device/instance id.
+ */
+const WHATCHIMP_CONNECT_URL =
+  process.env.NEXT_PUBLIC_WHATCHIMP_CONNECT_URL ||
+  'https://app.whatchimp.com/whatsapp/bot/connect';
 
 /**
  * Multi-step onboarding flow for a salon owner's first salon.
  *   Step 0 — salon name, address, slug (auto-suggested from the name).
- *   Step 1 — WhatChimp messaging configuration.
- *   Step 2 — show the unique forwarding email + Ovatu setup instructions,
- *            then create the salon via POST /api/onboarding.
+ *   Step 1 — connect WhatsApp (Coexistence QR flow) + copy in the resulting
+ *            instance id, then create the salon via POST /api/onboarding.
+ *
+ * Messaging uses the "Coexistence" model: each salon connects its OWN WhatsApp
+ * Business number, and SalonStream sends messages through that connection in
+ * the background while the owner keeps using the WhatsApp app on their phone.
  */
 export default function OnboardingFlow() {
   const [step, setStep] = useState(0);
@@ -17,13 +31,11 @@ export default function OnboardingFlow() {
   const [address, setAddress] = useState('');
   const [slug, setSlug] = useState('');
   const [slugTouched, setSlugTouched] = useState(false);
-  const [apiToken, setApiToken] = useState('');
-  const [phoneNumberId, setPhoneNumberId] = useState('');
-  const [templateName, setTemplateName] = useState('');
   const [error, setError] = useState(null);
   const [suggestedSlug, setSuggestedSlug] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
+  const [instanceId, setInstanceId] = useState('');
 
   const normalizedSlug = slugify(slug);
   const emailAddress = forwardingEmail(normalizedSlug);
@@ -70,6 +82,12 @@ export default function OnboardingFlow() {
     setStep(0);
   }
 
+  function openWhatsAppConnect() {
+    // Opens the WhatChimp Coexistence connection page (QR-code flow) in a new
+    // tab. The owner completes the flow there and copies back the instance id.
+    window.open(WHATCHIMP_CONNECT_URL, '_blank', 'noopener,noreferrer');
+  }
+
   async function complete() {
     setError(null);
     setSuggestedSlug(null);
@@ -82,9 +100,7 @@ export default function OnboardingFlow() {
           name: name.trim(),
           slug: normalizedSlug,
           address: address.trim(),
-          whatchimpApiToken: apiToken.trim(),
-          whatchimpPhoneNumberId: phoneNumberId.trim(),
-          whatchimpTemplateName: templateName.trim(),
+          whatchimpInstanceId: instanceId.trim() || null,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -201,52 +217,33 @@ export default function OnboardingFlow() {
 
       {step === 1 ? (
         <section className="card">
-          <h2>Connect WhatChimp</h2>
-          <p className="muted">
-            SalonStream sends WhatsApp messages through WhatChimp. Add your
-            credentials so reminders and confirmations reach your clients.
+          <h2>Connect your WhatsApp</h2>
+          <p>
+            SalonStream sends confirmations through your own WhatsApp Business
+            number — and you keep using the WhatsApp app on your phone at the
+            same time. Click below, scan the QR code with your WhatsApp Business
+            app, then paste the <strong>Instance ID</strong> it gives you.
           </p>
 
-          <label className="field">
-            <span>WhatChimp API token</span>
-            <input
-              type="password"
-              value={apiToken}
-              placeholder="Your WhatChimp API key"
-              onChange={(e) => setApiToken(e.target.value)}
-            />
-          </label>
+          <button className="btn btn-whatsapp" type="button" onClick={openWhatsAppConnect}>
+            Connect WhatsApp
+          </button>
 
           <label className="field">
-            <span>WhatChimp phone number ID</span>
+            <span>WhatsApp Instance ID</span>
             <input
               type="text"
-              value={phoneNumberId}
-              placeholder="Your WhatsApp phone number ID"
-              onChange={(e) => setPhoneNumberId(e.target.value)}
+              value={instanceId}
+              placeholder="e.g. 275484922308471"
+              onChange={(e) => setInstanceId(e.target.value)}
             />
+            <span className="hint">
+              Found in WhatChimp under your connected number (“Phone number ID”).
+              You can also add this later from your dashboard.
+            </span>
           </label>
 
-          <label className="field">
-            <span>Template name</span>
-            <input
-              type="text"
-              value={templateName}
-              placeholder="booking_confirmation"
-              onChange={(e) => setTemplateName(e.target.value)}
-            />
-          </label>
-
-          <div className="step-actions">
-            <button className="btn btn-outline" onClick={back}>← Back</button>
-            <button className="btn" onClick={next}>Continue →</button>
-          </div>
-        </section>
-      ) : null}
-
-      {step === 2 ? (
-        <section className="card">
-          <h2>Set up email forwarding in Ovatu</h2>
+          <h2 className="section-gap">Set up email forwarding in Ovatu</h2>
           <p>
             Your unique forwarding address is:
           </p>

@@ -62,12 +62,21 @@ create table if not exists public.salons (
   -- Ovatu email filtering (which inbound emails belong to this salon)
   email_filter_sender text not null default 'reservations@ovatu.com',
   email_filter_subject text,
-  -- WhatChimp messaging config. Store the api token carefully — do not log it.
-  whatchimp_api_token       text,
-  whatchimp_phone_number_id text,
-  whatchimp_template_name   text,
-  whatchimp_language_code   text default 'en_US',
-  default_country_code      text default '44',
+  -- WhatChimp messaging config ("Coexistence" model). Each salon connects its
+  -- OWN WhatsApp Business number via a QR code (WhatChimp Multi-Device /
+  -- Coexistence flow), so the owner keeps the WhatsApp app on their phone.
+  -- `whatchimp_instance_id` is the resulting device/instance id for that
+  -- salon's number (this is WhatChimp's `phone_number_id`, the value used to
+  -- route messages). The shared API token lives once in the backend env
+  -- (WHATCHIMP_API_TOKEN) — salons never enter it.
+  whatchimp_instance_id   text,
+  whatchimp_template_name text,
+  whatchimp_language_code text default 'en_US',
+  default_country_code    text default '44',
+  -- Usage counter for the current billing month. Used for tier enforcement
+  -- (Lite = 50 messages/month) and the message-margin KPI.
+  messages_sent       integer not null default 0,
+  messages_sent_month text,
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now()
 );
