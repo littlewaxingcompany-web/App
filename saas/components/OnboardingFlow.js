@@ -5,14 +5,14 @@ import { slugify, isValidSlug, forwardingEmail } from '../lib/slug';
 const STEPS = ['Salon profile', 'Connect WhatsApp'];
 
 /**
- * Where the owner connects their WhatsApp Business number. This is WhatChimp's
+ * Where the owner connects their WhatsApp Business number. This is the
  * Coexistence / Multi-Device flow (Meta Embedded Signup): it shows a QR code
  * the owner scans with their existing WhatsApp Business app, linking the app
  * and the API without changing number or giving up the app. We open this page
- * in a new tab; after completing it the owner gets back a device/instance id.
+ * in a new tab; after completing it the owner gets back a Connection ID.
  */
-const WHATCHIMP_CONNECT_URL =
-  process.env.NEXT_PUBLIC_WHATCHIMP_CONNECT_URL ||
+const WHATSAPP_CONNECT_URL =
+  process.env.NEXT_PUBLIC_WHATSAPP_CONNECT_URL ||
   'https://app.whatchimp.com/whatsapp/bot/connect';
 
 /**
@@ -83,9 +83,9 @@ export default function OnboardingFlow() {
   }
 
   function openWhatsAppConnect() {
-    // Opens the WhatChimp Coexistence connection page (QR-code flow) in a new
-    // tab. The owner completes the flow there and copies back the instance id.
-    window.open(WHATCHIMP_CONNECT_URL, '_blank', 'noopener,noreferrer');
+    // Opens the Coexistence connection page (QR-code flow) in a new tab. The
+    // owner completes the flow there and copies back the Connection ID.
+    window.open(WHATSAPP_CONNECT_URL, '_blank', 'noopener,noreferrer');
   }
 
   async function complete() {
@@ -100,7 +100,7 @@ export default function OnboardingFlow() {
           name: name.trim(),
           slug: normalizedSlug,
           address: address.trim(),
-          whatchimpInstanceId: instanceId.trim() || null,
+          whatsappInstanceId: instanceId.trim() || null,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -221,8 +221,8 @@ export default function OnboardingFlow() {
           <p>
             SalonStream sends confirmations through your own WhatsApp Business
             number — and you keep using the WhatsApp app on your phone at the
-            same time. Click below, scan the QR code with your WhatsApp Business
-            app, then paste the <strong>Instance ID</strong> it gives you.
+            same time. Click below, then scan the QR code with your WhatsApp
+            Business app to link it.
           </p>
 
           <button className="btn btn-whatsapp" type="button" onClick={openWhatsAppConnect}>
@@ -230,7 +230,7 @@ export default function OnboardingFlow() {
           </button>
 
           <label className="field">
-            <span>WhatsApp Instance ID</span>
+            <span>WhatsApp Connection ID</span>
             <input
               type="text"
               value={instanceId}
@@ -238,8 +238,8 @@ export default function OnboardingFlow() {
               onChange={(e) => setInstanceId(e.target.value)}
             />
             <span className="hint">
-              Found in WhatChimp under your connected number (“Phone number ID”).
-              You can also add this later from your dashboard.
+              After you connect, a Connection ID (also called a Phone number ID)
+              is shown on the confirmation screen — paste it here.
             </span>
           </label>
 

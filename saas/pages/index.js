@@ -10,7 +10,7 @@ export default function Home() {
         <h1>WhatsApp automation for salon owners — without the Zapier bill.</h1>
         <p className="muted">
           SalonStream turns your Ovatu booking emails into personalized WhatsApp
-          reminders, confirmations and follow-ups. Direct WhatChimp integration,
+          reminders, confirmations and follow-ups. Direct WhatsApp integration,
           no Zapier required.
         </p>
         <div className="hero-actions">
@@ -26,7 +26,7 @@ export default function Home() {
         </div>
         <div className="card">
           <h3>💬 Direct WhatsApp</h3>
-          <p className="muted">Native WhatChimp API — cut out the middleman and the monthly Zapier fee.</p>
+          <p className="muted">Native WhatsApp API — cut out the middleman and the monthly Zapier fee.</p>
         </div>
         <div className="card">
           <h3>📊 Multi-tenant dashboard</h3>
