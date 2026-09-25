@@ -19,7 +19,7 @@ export default async function handler(req, res) {
   }
 
   const { rows, error } = await query(
-    `SELECT id, name, slug, address, created_at
+    `SELECT id, name, slug, address, whatchimp_instance_id, created_at
        FROM salons
       WHERE user_id = $1
       ORDER BY created_at ASC

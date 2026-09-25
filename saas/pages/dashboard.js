@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import { forwardingEmail } from '../lib/slug';
+import ConnectionPanel from '../components/ConnectionPanel';
 
 /** How recent must the latest activity be for the inbox to show as "Live". */
 const LIVE_WINDOW_MS = 15 * 60 * 1000;
@@ -34,6 +35,7 @@ const TYPE_META = {
 export default function Dashboard() {
   const router = useRouter();
   const [salon, setSalon] = useState(null);
+  const [userId, setUserId] = useState(null);
   const [checking, setChecking] = useState(true);
   const [stats, setStats] = useState(null);
   const [activity, setActivity] = useState([]);
@@ -55,6 +57,8 @@ export default function Dashboard() {
         active = false;
       };
     }
+
+    setUserId(userId);
 
     fetch(`/api/salons?user_id=${encodeURIComponent(userId)}`)
       .then((r) => r.json())
@@ -185,6 +189,10 @@ export default function Dashboard() {
           ) : null}
         </div>
       </div>
+
+      {salon ? (
+        <ConnectionPanel salon={salon} userId={userId} onUpdated={setSalon} />
+      ) : null}
 
       {/* Recent activity */}
       <section className="card">

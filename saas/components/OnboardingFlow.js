@@ -1,19 +1,9 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { slugify, isValidSlug, forwardingEmail } from '../lib/slug';
+import { WHATSAPP_CONNECT_URL } from '../lib/whatsapp-connect';
 
 const STEPS = ['Salon profile', 'Connect WhatsApp'];
-
-/**
- * Where the owner connects their WhatsApp Business number. This is the
- * Coexistence / Multi-Device flow (Meta Embedded Signup): it shows a QR code
- * the owner scans with their existing WhatsApp Business app, linking the app
- * and the API without changing number or giving up the app. We open this page
- * in a new tab; after completing it the owner gets back a Connection ID.
- */
-const WHATSAPP_CONNECT_URL =
-  process.env.NEXT_PUBLIC_WHATSAPP_CONNECT_URL ||
-  'https://app.whatchimp.com/whatsapp/bot/connect';
 
 /**
  * Multi-step onboarding flow for a salon owner's first salon.
