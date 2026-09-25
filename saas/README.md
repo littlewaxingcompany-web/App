@@ -66,6 +66,11 @@ npm run dev
 Create the schema by running `schema.sql` against your Postgres database
 (Supabase SQL editor or `psql "$DATABASE_URL" -f schema.sql`).
 
+`NEXT_PUBLIC_WHATSAPP_CONNECT_URL` controls the page the "Connect WhatsApp"
+button opens during onboarding and on the dashboard. The legacy name
+`NEXT_PUBLIC_WHATCHIMP_CONNECT_URL` is deprecated but still honoured as a
+fallback.
+
 ## Inbound Email Flow
 
 1. Point a Postmark or Mailgun inbound route at `POST /api/inbound-email?salon_id=<id>`.

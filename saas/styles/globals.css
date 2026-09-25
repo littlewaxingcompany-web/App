@@ -417,3 +417,33 @@ nav a {
 .activity-time {
   flex: none;
 }
+/* ─── WhatsApp connection panel ──────────────────────────────────────────── */
+.connection-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.connection-head .section-title {
+  margin: 0;
+}
+.connection-cta {
+  margin: 0.75rem 0 1rem;
+}
+.btn-danger {
+  background: #dc2626;
+}
+.btn-danger:hover {
+  background: #b91c1c;
+}
+.form-error {
+  color: #b91c1c;
+  font-size: 0.85rem;
+  margin: 0.75rem 0 0;
+}
+.form-notice {
+  color: #15803d;
+  font-size: 0.85rem;
+  margin: 0.75rem 0 0;
+}
